@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:5241/api/accountsPayable"; // Adjust based on your .NET backend URL
+const API_BASE_URL = "http://localhost:5241/api/AccountsPayable"; // Adjust based on your .NET backend URL
 
 const apiServices = {
   // Fetch all accounts payable records

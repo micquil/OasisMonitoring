@@ -7,7 +7,11 @@ import { useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { z } from "zod";
 
@@ -25,22 +29,6 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const AccountsPayable = () => {
-  const formSchema = z.object({
-    username: z.string().min(2, {
-      message: "Username must be at least 2 characters.",
-    }),
-    amount: z.string().regex(/^\d+(\.\d{1,2})?$/, {
-      message: "Invalid amount format (max 2 decimal places).",
-    }),
-  });
-
-  // const form = useForm({
-  //   resolver: zodResolver(formSchema),
-  //   defaultValues: {
-  //     username: "",
-  //   },
-  // });
-
   const formatCurrency = (value) => {
     if (!value) return "";
     const number = parseFloat(value);
@@ -54,20 +42,36 @@ const AccountsPayable = () => {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await apiServices.getAll();
-        setAccounts(data);
-      } catch (error) {
-        console.error("Failed to fetch accounts payable:", error);
-      }
-    };
+  const fetchData = async () => {
+    try {
+      const data = await apiServices.getAll();
+      const sortedData = data.sort((a, b) => b.id - a.id);
+      setAccounts(sortedData);
+    } catch (error) {
+      console.error("Failed to fetch accounts payable:", error);
+    }
+  };
 
+  useEffect(() => {
     fetchData();
   }, []);
 
+
+  const formSchema = z.object({
+    customerName: z.string().min(1, "Customer name is required."),
+    invoiceNumber: z.string().min(1, "Invoice number is required."),
+    amount: z
+      .string()
+      .regex(/^\d+(\.\d{1,2})?$/, {
+        message: "Invalid amount format (max 2 decimal places).",
+      })
+      .transform((val) => parseFloat(val.replace(/,/g, ""))), // Convert to number
+    date: z.date(),
+    status: z.enum(["Unpaid", "Paid"]),
+  });
+
   const form = useForm({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       customerName: "",
       invoiceNumber: "",
@@ -81,21 +85,26 @@ const AccountsPayable = () => {
     try {
       setLoading(true);
 
-      // Convert the amount from formatted currency to a number
+      // Ensure date is correctly formatted
       const formattedData = {
         ...data,
-        amount: parseFloat(data.amount.replace(/,/g, "")), // Remove commas for number format
+        name: data.customerName,
+        amount: parseFloat(data.amount), // Ensure number type
         date: format(data.date, "yyyy-MM-dd"),
+        dueDate: format(
+          new Date(data.date).setDate(data.date.getDate() + 30),
+          "yyyy-MM-dd"
+        ),
       };
 
-      await apiServices.create(formattedData);
+      const response = await apiServices.create(formattedData);
+      console.log("API Response:", response); // Debugging
+
       toast.success("Record added successfully!");
-
-      // Refresh the table after adding
-      refreshTable();
-
-      form.reset(); // Clear form after submission
+      fetchData();
+      form.reset();
     } catch (error) {
+      console.error("Submission error:", error);
       toast.error("Failed to add record!");
     } finally {
       setLoading(false);
@@ -260,11 +269,11 @@ const AccountsPayable = () => {
                               className="flex gap-4"
                             >
                               <FormItem className="flex items-center space-x-2">
-                                <RadioGroupItem value="unpaid" />
+                                <RadioGroupItem value="Unpaid" />
                                 <FormLabel>Unpaid</FormLabel>
                               </FormItem>
                               <FormItem className="flex items-center space-x-2">
-                                <RadioGroupItem value="paid" />
+                                <RadioGroupItem value="Paid" />
                                 <FormLabel>Paid</FormLabel>
                               </FormItem>
                             </RadioGroup>
@@ -279,8 +288,9 @@ const AccountsPayable = () => {
                   <Button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700"
+                    disabled={loading}
                   >
-                    Submit Record
+                    {loading ? "Submitting..." : "Submit Record"}
                   </Button>
                 </form>
               </Form>
