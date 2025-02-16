@@ -1,7 +1,14 @@
 import React from "react";
 import Sidebar from "../sidebar/Sidebar.jsx";
+import apiServices from "@/services/apiServices";
+import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { toast } from "react-hot-toast";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -27,17 +34,12 @@ const AccountsPayable = () => {
     }),
   });
 
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      username: "",
-    },
-  });
-
-  // Define form submit handler
-  const onSubmit = (data) => {
-    console.log("Form Submitted: ", data);
-  };
+  // const form = useForm({
+  //   resolver: zodResolver(formSchema),
+  //   defaultValues: {
+  //     username: "",
+  //   },
+  // });
 
   const formatCurrency = (value) => {
     if (!value) return "";
@@ -47,6 +49,57 @@ const AccountsPayable = () => {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(number);
+  };
+
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await apiServices.getAll();
+        setAccounts(data);
+      } catch (error) {
+        console.error("Failed to fetch accounts payable:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const form = useForm({
+    defaultValues: {
+      customerName: "",
+      invoiceNumber: "",
+      amount: "",
+      status: "unpaid",
+      date: new Date(),
+    },
+  });
+
+  const onSubmit = async (data) => {
+    try {
+      setLoading(true);
+
+      // Convert the amount from formatted currency to a number
+      const formattedData = {
+        ...data,
+        amount: parseFloat(data.amount.replace(/,/g, "")), // Remove commas for number format
+        date: format(data.date, "yyyy-MM-dd"),
+      };
+
+      await apiServices.create(formattedData);
+      toast.success("Record added successfully!");
+
+      // Refresh the table after adding
+      refreshTable();
+
+      form.reset(); // Clear form after submission
+    } catch (error) {
+      toast.error("Failed to add record!");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -158,33 +211,69 @@ const AccountsPayable = () => {
                     )}
                   />
 
-                  {/* Status */}
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                            className="flex gap-4"
-                          >
-                            <FormItem className="flex items-center space-x-2">
-                              <RadioGroupItem value="unpaid" />
-                              <FormLabel>Unpaid</FormLabel>
-                            </FormItem>
-                            <FormItem className="flex items-center space-x-2">
-                              <RadioGroupItem value="paid" />
-                              <FormLabel>Paid</FormLabel>
-                            </FormItem>
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="flex gap-4">
+                    {/* Date Picker */}
+                    <FormField
+                      control={form.control}
+                      name="date"
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormLabel>Date</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <button
+                                  type="button"
+                                  className="w-48 text-left bg-white border px-3 py-2 rounded-lg flex items-center justify-between"
+                                >
+                                  {field.value
+                                    ? format(field.value, "PPP")
+                                    : "Pick a date"}
+                                  <CalendarIcon className="w-4 h-4 text-gray-500" />
+                                </button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Status */}
+                    <FormField
+                      control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormLabel>Status</FormLabel>
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              className="flex gap-4"
+                            >
+                              <FormItem className="flex items-center space-x-2">
+                                <RadioGroupItem value="unpaid" />
+                                <FormLabel>Unpaid</FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2">
+                                <RadioGroupItem value="paid" />
+                                <FormLabel>Paid</FormLabel>
+                              </FormItem>
+                            </RadioGroup>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   {/* Submit Button */}
                   <Button
@@ -204,33 +293,48 @@ const AccountsPayable = () => {
           <h2 className="text-lg font-bold mb-4">All Customers</h2>
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-blue-600 text-white">
-                <th className="p-2">Customer Name</th>
-                <th className="p-2">Invoice #</th>
-                <th className="p-2">Date</th>
-                <th className="p-2">Amount</th>
-                <th className="p-2">Due Date</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Action</th>
+              <tr className="bg-blue-600 text-white text-left">
+                <th className="p-3">Customer Name</th>
+                <th className="p-3">Invoice #</th>
+                <th className="p-3">Date</th>
+                <th className="p-3">Amount</th>
+                <th className="p-3">Due Date</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {[1, 2, 3, 4].map((row, index) => (
-                <tr key={index} className="border-b">
-                  <td className="p-2">Jane Cooper</td>
-                  <td className="p-2">7542</td>
-                  <td className="p-2">March 10, 2025</td>
-                  <td className="p-2">₱6,541</td>
-                  <td className="p-2">April 10, 2025</td>
-                  <td className="p-2 text-red-500">Unpaid</td>
-                  <td className="p-2 justify-center flex gap-2">
-                    <button className="bg-green-500 text-white px-2 py-1 rounded">
+              {accounts.map((account, index) => (
+                <tr
+                  key={account.id}
+                  className="border-b hover:bg-gray-100 transition"
+                >
+                  <td className="p-3">{account.name}</td>
+                  <td className="p-3">{account.invoiceNumber}</td>
+                  <td className="p-3">
+                    {new Date(account.date).toLocaleDateString()}
+                  </td>
+                  <td className="p-3">₱{account.amount.toLocaleString()}</td>
+                  <td className="p-3">
+                    {new Date(account.dueDate).toLocaleDateString()}
+                  </td>
+                  <td
+                    className={`p-3 font-semibold ${
+                      account.status === "Unpaid"
+                        ? "text-red-500"
+                        : "text-green-500"
+                    }`}
+                  >
+                    {account.status}
+                  </td>
+                  <td className="p-3 flex justify-center gap-2">
+                    <button className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">
                       Pay Now
                     </button>
-                    <button className="bg-yellow-500 text-white px-2 py-1 rounded">
+                    <button className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600">
                       Update
                     </button>
-                    <button className="bg-red-500 text-white px-2 py-1 rounded">
+                    <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
                       Delete
                     </button>
                   </td>
